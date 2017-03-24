@@ -12,8 +12,8 @@ template<typename T=u8, int size=4096>
 class Memory{
 	std::array<T, size> memory; // 4K of Memory
 public:
-	u8 RB(u16 addr) { return (u8 &) memory[addr]; }
-	void WB(u16 addr, const u8 & value) { memory[addr] = value; }
+	u8 RB(u16 addr) { return (u8 &) memory[addr]; } // Read data from address
+	void WB(u16 addr, const u8 & value) { memory[addr] = value; } // Write to address
 };
 
 class Stack : public std::vector<u16> {
@@ -95,6 +95,7 @@ public:
 
 struct Chip8 { // Chip 8 Processor
 	std::array<u8, 16> regs; // General Registers from v0 - vf
+	std::array<bool, 16> io;
 	// vf is used for a special flag
 	u8 dt, st;	// Delay and Sound Timers
 	u16 i; // Memory Index
@@ -120,14 +121,74 @@ struct Chip8 { // Chip 8 Processor
 			}
 	}
 
-	bool keyIsPressed() {
-		// To do...		
-		return false;
+	bool keyIsPressed(u8 key) {
+		if(io[key]) { return true; }
+		else { return false; }
 	}
 
-	u8 getPressedKey() {
-		// To do...
-		return 0;
+	void checkInput() {
+		SDL_Event e;
+		while(SDL_PollEvent(&e)) {
+			switch(e.key.keysym.sym) {
+				case SDLK_1:
+					io[1] = true;
+					break;
+				case SDLK_2:
+					io[2] = true;
+					break;
+				case SDLK_3:
+					io[3] = true;
+					break;
+				case SDLK_4:
+					io[4] = true;
+					break;
+				case SDLK_5:
+					io[5] = true;
+					break;
+				case SDLK_6:
+					io[6] = true;
+					break;
+				case SDLK_7:
+					io[7] = true;
+					break;
+				case SDLK_8:
+					io[8] = true;
+					break;
+				case SDLK_9:
+					io[9] = true;
+					break;
+				case SDLK_a:
+					io[0xa] = true;
+					break;
+				case SDLK_b:
+					io[0xb] = true;
+					break;
+				case SDLK_c:
+					io[0xc] = true;
+					break;
+				case SDLK_d:
+					io[0xd] = true;
+					break;
+				case SDLK_e:
+					io[0xe] = true;
+					break;
+				case SDLK_f:
+					io[0xf] = true;
+					break;
+				default:
+					for(int i = 0; i < 16; ++i) {
+						io[i] = false;
+					}
+				break;
+			}
+		}
+
+	}
+
+	u8 getPressedKey() { // Returns first pressed key in seqential order
+		u8 key = 0;
+		while(!io[key]) { ++key; }
+		return key;
 	}
 
 
@@ -225,18 +286,18 @@ struct Chip8 { // Chip 8 Processor
 			regs[n1] = (rand() % 256) & (opcode & 0x00ff);
 			break;
 		case 0xd: // DRW Vx, Vy, nibble
-					
+						
 			break;
 		case 0xe:
 			switch(n2) {
-			case 0x9: // SKP Vx
+			case 0x9:
 				if(keyIsPressed(regs[n1]))
 					pc += 2;
 				break;
-			case 0xa: // SKNP Vx
+			case 0xa:
 				if(!keyIsPressed(regs[n1]))
 					pc += 2;
-				break;
+					break;
 			}
 			break;
 		case 0xf:
@@ -245,13 +306,13 @@ struct Chip8 { // Chip 8 Processor
 				regs[n1] = dt;
 				break;
 			case 0x0a: // LD Vx, K
-				regs[n1] = getPressedKey();
+				regs[n1] = dt;
 				break;
-			case 0x15: // LD DT, Vx
+			case 0x15:
 				dt = regs[n1];
 				break;
-			case 0x18: // LD ST, Vx
-				st = regs[n1];	
+			case 0x18:
+				st = regs[n1];
 				break;
 			case 0x1e: // AND I, Vx
 				i = i & regs[n1];
@@ -273,23 +334,22 @@ struct Chip8 { // Chip 8 Processor
 				for(int j = 0; j < regs[n1]; ++j) {
 					regs[j] = RAM.RB(i + j);
 				}
-				break;
 			}
-			break;
 		}
 	}
-	
+
 	void op() {
-		u8 opcode = RAM.RB(pc);	
+		u8 opcode = RAM.RB(pc);
 		tick();
 		exe(opcode);
 		disp.clear();
 		disp.draw();
-		
+		pc += 2; // Each instruction is 2 bytes long
 	}
 };
 
-int main() {
+
+int main(int /*argc*/, char ** /*argv*/) {
 	Chip8 sys;
 	for(;;)
 		sys.op();
