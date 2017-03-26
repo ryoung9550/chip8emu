@@ -12,6 +12,7 @@ template<typename T=u8, int size=4096>
 class Memory{
 	std::array<T, size> memory; // 4K of Memory
 public:
+	Memory() { memory = {}; } 
 	u8 RB(u16 addr) { return (u8 &) memory[addr]; } // Read data from address
 	void WB(u16 addr, const u8 & value) { memory[addr] = value; } // Write to address
 };
@@ -55,7 +56,9 @@ public:
 	}
 
 	void clear() {
-		SDL_FillRect(surf.get(), NULL, 0);
+		for(int i = 0; i < 256; ++i) {
+			screenPixels[i] = 0;
+		}
 	}
 	
 	int predrawSurf(const u8 & addr, Memory<u8> & RAM, const u8 & nBytes, const u8 & x, const u8 & y) {
@@ -82,10 +85,11 @@ public:
 					screenPixels[(x / 8) + 1 + ((y + i) * 8)] = ((nextByte << (8 - xOffset) & maskB) ^ screenPixels[(y + i) * 8]);
 				}
 		}
-		
+		return collision;	
 	}
 	
 	void draw() { 
+		SDL_FillRect(surf.get(), NULL, 0); // Clear Screen
 		for(int i = 0; i < 256; ++i)
 			for(int j = 7; j >= 0; ++j)
 				if((screenPixels[i] >> j) & 1)
@@ -93,7 +97,7 @@ public:
 	}
 };
 
-struct Chip8 { // Chip 8 Processor
+struct Chip8 { // Chip 8 Processor: Originally an interpreter for the TELMAC
 	std::array<u8, 16> regs; // General Registers from v0 - vf
 	std::array<bool, 16> io;
 	// vf is used for a special flag
@@ -102,12 +106,20 @@ struct Chip8 { // Chip 8 Processor
 	u16 pc; // Program Counter
 	//u8 sp; no need due to vector methods // Stack Pointer
 	Stack stack; // Stack which contains return addresses
-
+	Uint32 tickStart; // Begining of a cycle
 	Display disp;
 	Memory<u8> RAM;
+	unsigned clockCycle = 100; // Hz
+	Uint32 cycleMax = 1000 / clockCycle;
+
+	Chip8() { tickStart = SDL_GetTicks(); }
 
 	void tick() {
-		for(int i = 0; i < 100000; ++i)	{}
+		Uint32 currentTick = SDL_GetTicks();
+		Uint32 tickTime = tickStart - currentTick;
+		if(	tickTime < cycleMax )
+			SDL_Delay(cycleMax - tickTime);
+		tickStart = SDL_GetTicks();
 	}
 
 	void loadFont() {
@@ -122,6 +134,7 @@ struct Chip8 { // Chip 8 Processor
 	}
 
 	bool keyIsPressed(u8 key) {
+		checkInput();
 		if(io[key]) { return true; }
 		else { return false; }
 	}
@@ -185,9 +198,17 @@ struct Chip8 { // Chip 8 Processor
 
 	}
 
-	u8 getPressedKey() { // Returns first pressed key in seqential order
+	u8 getPressedKey() { // Returns first pressed key when one is pressed.
 		u8 key = 0;
-		while(!io[key]) { ++key; }
+		checkInput();
+		while(!io[key]) { 
+			if(key < 16) {
+				++key; 
+			} else {
+				key = 0;
+				checkInput();
+			}
+		}
 		return key;
 	}
 
@@ -286,7 +307,8 @@ struct Chip8 { // Chip 8 Processor
 			regs[n1] = (rand() % 256) & (opcode & 0x00ff);
 			break;
 		case 0xd: // DRW Vx, Vy, nibble
-						
+			disp.predrawSurf(i, RAM, n3, regs[n1], regs[n2]);				
+			disp.draw();
 			break;
 		case 0xe:
 			switch(n2) {
@@ -306,12 +328,12 @@ struct Chip8 { // Chip 8 Processor
 				regs[n1] = dt;
 				break;
 			case 0x0a: // LD Vx, K
-				regs[n1] = dt;
+				regs[n1] = getPressedKey();
 				break;
-			case 0x15:
+			case 0x15: // LD DT, Vx
 				dt = regs[n1];
 				break;
-			case 0x18:
+			case 0x18: // LD ST, Vx
 				st = regs[n1];
 				break;
 			case 0x1e: // AND I, Vx
@@ -340,18 +362,28 @@ struct Chip8 { // Chip 8 Processor
 
 	void op() {
 		u8 opcode = RAM.RB(pc);
-		tick();
 		exe(opcode);
-		disp.clear();
-		disp.draw();
 		pc += 2; // Each instruction is 2 bytes long
+		tick();
 	}
 };
 
 
-int main(int /*argc*/, char ** /*argv*/) {
+int main(int /*argc*/, char ** argv) {
 	Chip8 sys;
-	for(;;)
-		sys.op();
+	FILE* f = fopen(argv[1], "rb");
+	if(f == NULL) perror ("File could not be opened");
+	else {
+		signed n = fgetc(f);
+		unsigned memAddr = 0x200;
+
+		while(n  != EOF) {
+			sys.RAM.WB(memAddr, u8 (n & 0xff));
+			n = fgetc(f);
+		}
+		for(;;)
+			sys.op();
+	}
+	SDL_Quit();
 	return 0;
 }
