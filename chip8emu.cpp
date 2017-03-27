@@ -41,12 +41,14 @@ public:
 			"Chip8 Interpreter", // Title
 			SDL_WINDOWPOS_UNDEFINED, // Window Start X
 			SDL_WINDOWPOS_UNDEFINED, // Window Start Y
-			64, // Window width
-			32, // Window height
+			64 * 4, // Window width
+			32 * 4, // Window height
 			0)); // Window Flags 
 		surf.reset(SDL_GetWindowSurface(win.get()));
 	}
 	~Display() {
+		win.reset();
+		surf.reset();
 	}
 
 	bool isInit() {
@@ -101,22 +103,25 @@ struct Chip8 { // Chip 8 Processor: Originally an interpreter for the TELMAC
 	std::array<u8, 16> regs; // General Registers from v0 - vf
 	std::array<bool, 16> io;
 	// vf is used for a special flag
-	u8 dt, st;	// Delay and Sound Timers
-	u16 i; // Memory Index
-	u16 pc; // Program Counter
+	u8 dt {0}, st {0};	// Delay and Sound Timers
+	u16 i {0}; // Memory Index
+	u16 pc = 0x200; // Program Counter
 	//u8 sp; no need due to vector methods // Stack Pointer
 	Stack stack; // Stack which contains return addresses
 	Uint32 tickStart; // Begining of a cycle
 	Display disp;
 	Memory<u8> RAM;
-	unsigned clockCycle = 100; // Hz
+	unsigned clockCycle = 1; // Hz
 	Uint32 cycleMax = 1000 / clockCycle;
+	bool running = true;
 
 	Chip8() { tickStart = SDL_GetTicks(); }
 
 	void tick() {
 		Uint32 currentTick = SDL_GetTicks();
 		Uint32 tickTime = tickStart - currentTick;
+		if(dt > 0) --dt;
+		if(st > 0) --st;
 		if(	tickTime < cycleMax )
 			SDL_Delay(cycleMax - tickTime);
 		tickStart = SDL_GetTicks();
@@ -134,7 +139,6 @@ struct Chip8 { // Chip 8 Processor: Originally an interpreter for the TELMAC
 	}
 
 	bool keyIsPressed(u8 key) {
-		checkInput();
 		if(io[key]) { return true; }
 		else { return false; }
 	}
@@ -142,7 +146,13 @@ struct Chip8 { // Chip 8 Processor: Originally an interpreter for the TELMAC
 	void checkInput() {
 		SDL_Event e;
 		while(SDL_PollEvent(&e)) {
+			if(e.type == SDL_QUIT)
+				running = false;
+			if(e.type == SDL_KEYDOWN)
 			switch(e.key.keysym.sym) {
+				case SDLK_ESCAPE:
+					running = false;
+					break;
 				case SDLK_1:
 					io[1] = true;
 					break;
@@ -199,8 +209,8 @@ struct Chip8 { // Chip 8 Processor: Originally an interpreter for the TELMAC
 	}
 
 	u8 getPressedKey() { // Returns first pressed key when one is pressed.
+		printf("getPressedKey()\n");
 		u8 key = 0;
-		checkInput();
 		while(!io[key]) { 
 			if(key < 16) {
 				++key; 
@@ -209,6 +219,7 @@ struct Chip8 { // Chip 8 Processor: Originally an interpreter for the TELMAC
 				checkInput();
 			}
 		}
+		printf("%d\n", key);
 		return key;
 	}
 
@@ -362,6 +373,7 @@ struct Chip8 { // Chip 8 Processor: Originally an interpreter for the TELMAC
 
 	void op() {
 		u8 opcode = RAM.RB(pc);
+		checkInput();
 		exe(opcode);
 		pc += 2; // Each instruction is 2 bytes long
 		tick();
@@ -376,13 +388,15 @@ int main(int /*argc*/, char ** argv) {
 	else {
 		signed n = fgetc(f);
 		unsigned memAddr = 0x200;
-
 		while(n  != EOF) {
-			sys.RAM.WB(memAddr, u8 (n & 0xff));
+			sys.RAM.WB(memAddr++, u8 (n & 0xff));
+			printf("%x\n", n & 0xff);
 			n = fgetc(f);
 		}
-		for(;;)
+
+		while(sys.running) {
 			sys.op();
+		}
 	}
 	SDL_Quit();
 	return 0;
