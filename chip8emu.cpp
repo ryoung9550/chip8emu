@@ -26,15 +26,15 @@ public:
 };
 
 struct SDL_Deleter {
-	void operator()(SDL_Window* ptr) { SDL_DestroyWindow(ptr); }
 	void operator()(SDL_Surface* ptr) { SDL_FreeSurface(ptr); }
+	void operator()(SDL_Window* ptr) { SDL_DestroyWindow(ptr); }
 };
 
 class Display {
 	std::unique_ptr<SDL_Window, SDL_Deleter> win;
-	std::unique_ptr<SDL_Surface, SDL_Deleter> surfBuffer;
-	std::unique_ptr<SDL_Surface, SDL_Deleter> winSurface;
-	std::array<u8, 256> screenPixels{ 0 };
+	std::unique_ptr<SDL_Surface> surfBuffer;
+	std::unique_ptr<SDL_Surface> winSurface;
+	std::array<u8, 256> screenPixels {};
 public:
 	Display() {
 		SDL_Init(SDL_INIT_EVERYTHING);
@@ -48,11 +48,13 @@ public:
 		winSurface.reset(SDL_GetWindowSurface(win.get()));
 		surfBuffer.reset(SDL_ConvertSurface(winSurface.get(), winSurface.get()->format, 0));
 	}
+	/*
 	~Display() {
 		win.reset();
 		winSurface.reset();
 		surfBuffer.reset();
 	}
+	*/
 
 	bool isInit() {
 		if (win.get() == nullptr) { printf("Window did not initialize!\n"); return false; }
@@ -113,8 +115,8 @@ public:
 };
 
 struct Chip8 { // Chip 8 Processor: Originally an interpreter for the TELMAC
-	std::array<u8, 16> regs{ 0 }; // General Registers from v0 - vf
-	std::array<bool, 16> io{ false };
+	std::array<u8, 16> regs{}; // General Registers from v0 - vf
+	std::array<bool, 16> io{ {false} };
 	// vf is used for a special flag
 	u8 dt{ 0 }, st{ 0 };	// Delay and Sound Timers
 	u16 i{ 0 }; // Memory Index
