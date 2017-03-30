@@ -6,7 +6,7 @@
 #include <memory>
 #include <time.h>
 
-#define SCALE 1
+#define SCALE 4
 typedef uint8_t u8;
 typedef uint16_t u16;
 
@@ -104,13 +104,23 @@ public:
 		return collision;
 	}
 
+	void DrawScaledPix(SDL_Surface* surf, const int &x, const int &y) {
+		for(int i = 0; i < SCALE; ++i) {
+			for(int j = 0; j < SCALE; j++) {
+				sp::DrawPixel(surf, (x * SCALE) + i, (y * SCALE) + j);
+			}
+		}
+	}
+
 	void draw() {
 		SDL_FillRect(winSurface.get(), NULL, 0); // Clear Window
 		SDL_FillRect(surfBuffer.get(), NULL, 0); // Clear Buffer Screen
 		for (int i = 0; i < 256; ++i)
 			for (int j = 7; j >= 0; --j)
-				if ((screenPixels[i] >> j) & 1)
-					sp::DrawPixel(surfBuffer.get(), (i % 64) + j, i / 64);
+				if ((screenPixels[i] >> j) & 1) {
+					DrawScaledPix(surfBuffer.get(), (i % 64) + j, i / 64);
+					//sp::DrawPixel(surfBuffer.get(), (i % 64) + j, i / 64);
+				}
 		SDL_BlitSurface(surfBuffer.get(), 0, winSurface.get(), 0);
 		SDL_UpdateWindowSurface(win.get());
 	}
@@ -407,9 +417,8 @@ struct Chip8 { // Chip 8 Processor: Originally an interpreter for the TELMAC
 
 int main(int /*argc*/, char ** argv) {
 	srand(time(0));
-	char* filePath = "MAZE";
 	Chip8 sys;
-	FILE* f = fopen(filePath, "rb");
+	FILE* f = fopen(argv[1], "rb");
 	if (f == NULL) perror("File could not be opened");
 	else {
 		signed n = fgetc(f);
