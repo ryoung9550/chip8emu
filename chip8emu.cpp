@@ -4,7 +4,9 @@
 #include <vector>
 #include <array>
 #include <memory>
+#include <time.h>
 
+#define SCALE 1
 typedef uint8_t u8;
 typedef uint16_t u16;
 
@@ -34,7 +36,7 @@ class Display {
 	std::unique_ptr<SDL_Window, SDL_Deleter> win;
 	std::unique_ptr<SDL_Surface> surfBuffer;
 	std::unique_ptr<SDL_Surface> winSurface;
-	std::array<u8, 256> screenPixels {};
+	std::array<u8, 256> screenPixels{};
 public:
 	Display() {
 		SDL_Init(SDL_INIT_EVERYTHING);
@@ -42,17 +44,17 @@ public:
 			"Chip8 Interpreter", // Title
 			SDL_WINDOWPOS_UNDEFINED, // Window Start X
 			SDL_WINDOWPOS_UNDEFINED, // Window Start Y
-			64 * 4, // Window width
-			32 * 4, // Window height
+			64 * SCALE, // Window width
+			32 * SCALE, // Window height
 			0)); // Window Flags 
 		winSurface.reset(SDL_GetWindowSurface(win.get()));
 		surfBuffer.reset(SDL_ConvertSurface(winSurface.get(), winSurface.get()->format, 0));
 	}
 	/*
 	~Display() {
-		win.reset();
-		winSurface.reset();
-		surfBuffer.reset();
+	win.reset();
+	winSurface.reset();
+	surfBuffer.reset();
 	}
 	*/
 
@@ -72,7 +74,7 @@ public:
 	int predrawSurf(const u8 & addr, Memory<u8> & RAM, const u8 & nBytes, const u8 & x, const u8 & y) {
 		unsigned collision = 0;
 		unsigned xOffset = (x % 8);
-		
+
 
 		if /*constexpr*/ (xOffset == 0) { // If the sprite is alligned with memory
 			for (int i = 0; i < nBytes; ++i) {
@@ -87,7 +89,7 @@ public:
 				for (int i = 0; i < nBytes; ++i) { // If the sprite is slightly off the screen on the x axis
 					u8 nextByte = RAM.RB(addr + i);
 					unsigned yAdj = (y + i) % 32;
-					
+
 					screenPixels[7 + (yAdj * 8)] = ((nextByte >> xOffset) & maskT) ^ screenPixels[7 + (yAdj * 8)];
 					screenPixels[yAdj * 8] = ((nextByte << (8 - xOffset) & maskB) ^ screenPixels[yAdj * 8]);
 				}
@@ -108,7 +110,7 @@ public:
 		for (int i = 0; i < 256; ++i)
 			for (int j = 7; j >= 0; --j)
 				if ((screenPixels[i] >> j) & 1)
-					sp::DrawPixel(surfBuffer.get(), (i % 64) + j, i / 64); 
+					sp::DrawPixel(surfBuffer.get(), (i % 64) + j, i / 64);
 		SDL_BlitSurface(surfBuffer.get(), 0, winSurface.get(), 0);
 		SDL_UpdateWindowSurface(win.get());
 	}
@@ -116,7 +118,7 @@ public:
 
 struct Chip8 { // Chip 8 Processor: Originally an interpreter for the TELMAC
 	std::array<u8, 16> regs{}; // General Registers from v0 - vf
-	std::array<bool, 16> io{ {false} };
+	std::array<bool, 16> io{ { false } };
 	// vf is used for a special flag
 	u8 dt{ 0 }, st{ 0 };	// Delay and Sound Timers
 	u16 i{ 0 }; // Memory Index
@@ -126,13 +128,16 @@ struct Chip8 { // Chip 8 Processor: Originally an interpreter for the TELMAC
 	Uint32 tickStart; // Begining of a cycle
 	Display disp;
 	Memory<u8> RAM;
-	unsigned clockCycle = 60; // Hz
+	unsigned clockCycle = 1000; // Hz
 	Uint32 cycleMax = 1000 / clockCycle;
 	bool running = true;
 
-	Chip8() { tickStart = SDL_GetTicks(); }
+	Chip8() { 
+		tickStart = SDL_GetTicks(); 
+		loadFont();
+	}
 
-	void tick() {
+	void tick() { // The clock cycle of the chip8
 		Uint32 currentTick = SDL_GetTicks();
 		Uint32 tickTime = tickStart - currentTick;
 		if (dt > 0) --dt;
@@ -142,15 +147,18 @@ struct Chip8 { // Chip 8 Processor: Originally an interpreter for the TELMAC
 		tickStart = SDL_GetTicks();
 	}
 
-	void loadFont() {
-		u8* fontp = 0x0000;
+	void loadFont() { // Loads built in native font into memory
+		u8 fontp = 0x0000;
 		for (unsigned n : {0xf999f, 0x26227, 0xf1f8f, 0xf1f1f,
 			0x99f11, 0xf8f1f, 0xf8f9f, 0xf1244,
 			0xf9f9f, 0xf9f1f, 0xf9f99, 0xe9e9e,
 			0xf888f, 0xe999e, 0xf8f8f, 0xf8f88})
-			for (int i = 4; i < 0; ++i) {
-				*fontp++ = ((n >> (i * 0xf)) << 0xf) & 0xf0;
+		{
+			for (int i = 4; i > 0; --i) {
+				RAM.WB(fontp++, (n >> ((i - 1) * 4)) & 0xf0);
 			}
+			RAM.WB(fontp++, (n << 4) & 0xf0);
+		}
 	}
 
 	bool keyIsPressed(u8 key) {
@@ -398,8 +406,10 @@ struct Chip8 { // Chip 8 Processor: Originally an interpreter for the TELMAC
 
 
 int main(int /*argc*/, char ** argv) {
+	srand(time(0));
+	char* filePath = "MAZE";
 	Chip8 sys;
-	FILE* f = fopen(argv[1], "rb");
+	FILE* f = fopen(filePath, "rb");
 	if (f == NULL) perror("File could not be opened");
 	else {
 		signed n = fgetc(f);
