@@ -6,7 +6,7 @@
 #include <memory>
 #include <time.h>
 
-#define SCALE 4
+#define SCALE 7
 typedef uint8_t u8;
 typedef uint16_t u16;
 
@@ -37,6 +37,11 @@ class Display {
 	std::unique_ptr<SDL_Surface> surfBuffer;
 	std::unique_ptr<SDL_Surface> winSurface;
 	std::array<u8, 256> screenPixels{};
+	/* Screen Resolution of the chip8 is 64(h) x 32(v)
+	 * Each row consists of 8 bytes of data. So to get
+	 * to the next row the height value multiplied by
+	 * the 8 to adjust for the correct height
+	 */
 public:
 	Display() {
 		SDL_Init(SDL_INIT_EVERYTHING);
@@ -71,34 +76,38 @@ public:
 		}
 	}
 
-	int predrawSurf(const u8 & addr, Memory<u8> & RAM, const u8 & nBytes, const u8 & x, const u8 & y) {
+	bool predrawSurf(const u8 & addr, Memory<u8> & RAM, const u8 & nBytes, const u8 & x, const u8 & y) {
 		unsigned collision = 0;
 		unsigned xOffset = (x % 8);
+		unsigned xByte = x / 8;
 
 
 		if /*constexpr*/ (xOffset == 0) { // If the sprite is alligned with memory
 			for (int i = 0; i < nBytes; ++i) {
-				unsigned yAdj = (y + i) % 32;
-				screenPixels[xOffset + (yAdj * 8)] = RAM.RB(addr + i);
+				//unsigned yAdj = (y + i) % 32;
+				unsigned yAdj = y * 8 + i * 8;
+				u8 nextByte = RAM.RB(addr + i);
+				screenPixels[xByte + yAdj] = nextByte ^ screenPixels[xByte + yAdj];
 			}
 		}
 		else {
 			u8 maskT = (1u << xOffset) - 1u;
 			u8 maskB = ~maskT;
-			if /*constexpr*/ (x >= 7 * 8)
+			if /*constexpr*/ (x > 7 * 8)
 				for (int i = 0; i < nBytes; ++i) { // If the sprite is slightly off the screen on the x axis
 					u8 nextByte = RAM.RB(addr + i);
-					unsigned yAdj = (y + i) % 32;
-
-					screenPixels[7 + (yAdj * 8)] = ((nextByte >> xOffset) & maskT) ^ screenPixels[7 + (yAdj * 8)];
-					screenPixels[yAdj * 8] = ((nextByte << (8 - xOffset) & maskB) ^ screenPixels[yAdj * 8]);
+					//unsigned yAdj = (y + i) % 32;
+					unsigned yAdj = y * 8 + i * 8;
+					screenPixels[7 + yAdj] = ((nextByte >> xOffset) & maskT) ^ screenPixels[7 + yAdj];
+					screenPixels[yAdj] = ((nextByte << (8 - xOffset) & maskB) ^ screenPixels[yAdj]);
 				}
 			else
 				for (int i = 0; i < nBytes; ++i) {
 					u8 nextByte = RAM.RB(addr + i);
-					unsigned yAdj = (y + i) % 32;
-					screenPixels[(x / 8) + (yAdj * 8)] = ((nextByte >> xOffset) & maskT) ^ screenPixels[(x / 8) + (yAdj * 8)];
-					screenPixels[(x / 8) + 1 + (yAdj * 8)] = ((nextByte << (8 - xOffset) & maskB) ^ screenPixels[yAdj * 8]);
+					//unsigned yAdj = (y + i) % 32;
+					unsigned yAdj = y * 8 + i * 8;
+					screenPixels[(x / 8) + yAdj] = ((nextByte >> xOffset) & maskT) ^ screenPixels[(x / 8) + yAdj];
+					screenPixels[(x / 8) + 1 + yAdj] = ((nextByte << (8 - xOffset) & maskB) ^ screenPixels[(x / 8) + 1 + yAdj]);
 				}
 		}
 		return collision;
@@ -115,10 +124,10 @@ public:
 	void draw() {
 		SDL_FillRect(winSurface.get(), NULL, 0); // Clear Window
 		SDL_FillRect(surfBuffer.get(), NULL, 0); // Clear Buffer Screen
-		for (int i = 0; i < 256; ++i)
-			for (int j = 7; j >= 0; --j)
-				if ((screenPixels[i] >> j) & 1) {
-					DrawScaledPix(surfBuffer.get(), (i % 64) + j, i / 64);
+		for (int i = 0; i < 256; ++i) // Check all bytes in screenPixels array
+			for (int j = 7; j >= 0; --j) // Check bits of the byte
+				if (screenPixels[i] & (1u << i)) {
+					DrawScaledPix(surfBuffer.get(), (i % 8) * 8 + (7 - j), i / 32);
 					//sp::DrawPixel(surfBuffer.get(), (i % 64) + j, i / 64);
 				}
 		SDL_BlitSurface(surfBuffer.get(), 0, winSurface.get(), 0);
@@ -136,25 +145,36 @@ struct Chip8 { // Chip 8 Processor: Originally an interpreter for the TELMAC
 					//u8 sp; no need due to vector methods // Stack Pointer
 	Stack stack; // Stack which contains return addresses
 	Uint32 tickStart; // Begining of a cycle
+	Uint32 tickTimer; // Syncs timers to 50 hz
 	Display disp;
 	Memory<u8> RAM;
-	unsigned clockCycle = 1000; // Hz
+	unsigned clockCycle = 60; // Hz
 	Uint32 cycleMax = 1000 / clockCycle;
 	bool running = true;
 
 	Chip8() { 
 		tickStart = SDL_GetTicks(); 
+		tickTimer = tickStart;
 		loadFont();
 	}
 
 	void tick() { // The clock cycle of the chip8
 		Uint32 currentTick = SDL_GetTicks();
 		Uint32 tickTime = tickStart - currentTick;
-		if (dt > 0) --dt;
-		if (st > 0) --st;
+		updateTimers();
 		if (tickTime < cycleMax)
 			SDL_Delay(cycleMax - tickTime);
 		tickStart = SDL_GetTicks();
+	}
+
+	void updateTimers() { // Decrements Timers at a rate of 50 hz if greater than zero
+		Uint32 currentTick = SDL_GetTicks();
+		Uint32 tickTime = tickTimer - currentTick;
+		if(tickTime < ( 1000 / 50)) {
+			tickTimer = SDL_GetTicks();
+			if (dt > 0) --dt;
+			if (st > 0) --st;
+		}
 	}
 
 	void loadFont() { // Loads built in native font into memory
@@ -352,7 +372,8 @@ struct Chip8 { // Chip 8 Processor: Originally an interpreter for the TELMAC
 			regs[n1] = (rand() % 256) & (opcode & 0x00ff);
 			break;
 		case 0xd: // DRW Vx, Vy, nibble
-			disp.predrawSurf(i, RAM, n3, regs[n1], regs[n2]);
+			if(disp.predrawSurf(i, RAM, n3, regs[n1], regs[n2]))
+				regs[0xf] = true;
 			disp.draw();
 			break;
 		case 0xe:
