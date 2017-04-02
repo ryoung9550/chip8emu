@@ -77,7 +77,7 @@ public:
 	}
 
 	bool predrawSurf(const u16 & addr, Memory<u8> & RAM, const u8 & nBytes, const u8 & x, const u8 & y) {
-		unsigned collision = 0;
+		bool collision = false;
 		unsigned xOffset = (x % 8);
 		unsigned xByte = x / 8;
 
@@ -85,9 +85,11 @@ public:
 		if /*constexpr*/ (xOffset == 0) { // If the sprite is alligned with memory
 			for (int i = 0; i < nBytes; ++i) {
 				//unsigned yAdj = (y + i) % 32;
-				unsigned yAdj = y * 8 + i * 8;
+				unsigned yAdj = (y * 8 + i * 8) % 256;
 				u8 nextByte = RAM.RB(addr + i);
-				screenPixels[xByte + yAdj] = nextByte ^ screenPixels[xByte + yAdj];
+				unsigned arrayInx = xByte + yAdj;
+				screenPixels[arrayInx] = nextByte ^ screenPixels[arrayInx];
+				if (screenPixels[arrayInx] != nextByte) { collision = true; }
 			}
 		}
 		else {
@@ -97,17 +99,24 @@ public:
 				for (int i = 0; i < nBytes; ++i) { // If the sprite is slightly off the screen on the x axis
 					u8 nextByte = RAM.RB(addr + i);
 					//unsigned yAdj = (y + i) % 32;
-					unsigned yAdj = y * 8 + i * 8;
-					screenPixels[7 + yAdj] = ((nextByte >> xOffset) & maskT) ^ screenPixels[7 + yAdj];
+					unsigned yAdj = (y * 8 + i * 8) % 256;
+					unsigned arrayInx = 7 + yAdj;
+					screenPixels[arrayInx] = ((nextByte >> xOffset) & maskT) ^ screenPixels[arrayInx];
 					screenPixels[yAdj] = ((nextByte << (8 - xOffset) & maskB) ^ screenPixels[yAdj]);
+					if (screenPixels[arrayInx] != maskT) { collision = true; }
+					else if (screenPixels[yAdj] != maskB) { collision = true; }
 				}
 			else
 				for (int i = 0; i < nBytes; ++i) {
 					u8 nextByte = RAM.RB(addr + i);
-					//unsigned yAdj = (y + i) % 32;
-					unsigned yAdj = y * 8 + i * 8;
-					screenPixels[(x / 8) + yAdj] = ((nextByte >> xOffset) & maskT) ^ screenPixels[(x / 8) + yAdj];
-					screenPixels[(x / 8) + 1 + yAdj] = ((nextByte << (8 - xOffset) & maskB) ^ screenPixels[(x / 8) + 1 + yAdj]);
+					//unsigned yAdj = (y + i) % 32
+					unsigned yAdj = (y * 8 + i * 8) % 256;
+					unsigned arrInxHi = (x / 8) + yAdj;
+					unsigned arrInxLo = arrInxHi + 1;
+					screenPixels[arrInxHi] = ((nextByte >> xOffset) & maskT) ^ screenPixels[arrInxHi];
+					screenPixels[arrInxLo] = ((nextByte << (8 - xOffset) & maskB) ^ screenPixels[arrInxLo]);
+					if (screenPixels[arrInxHi] != maskT) { collision = true; }
+					else if (screenPixels[arrInxLo] != maskB) { collision = true; }
 				}
 		}
 		return collision;
@@ -302,6 +311,7 @@ struct Chip8 { // Chip 8 Processor: Originally an interpreter for the TELMAC
 			break;
 		case 0x1: // JP addr
 			pc = (opcode & 0x0fff);
+			pc -= 2; // counters the inc from main
 			break;
 		case 0x2: // CALL addr
 			stack.push_back(pc);
@@ -376,7 +386,9 @@ struct Chip8 { // Chip 8 Processor: Originally an interpreter for the TELMAC
 			break;
 		case 0xd: // DRW Vx, Vy, nibble
 			if (disp.predrawSurf(i, RAM, n3, regs[n1], regs[n2]))
-				regs[0xf] = true;
+				regs[0xf] = 1;
+			else
+				regs[0xf] = 0;
 			disp.draw();
 			break;
 		case 0xe:
