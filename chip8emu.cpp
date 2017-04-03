@@ -6,7 +6,7 @@
 #include <memory>
 #include <time.h>
 
-#define SCALE 7
+#define SCALE 12
 typedef uint8_t u8;
 typedef uint16_t u16;
 
@@ -131,7 +131,6 @@ public:
 	}
 
 	void draw() {
-		SDL_FillRect(winSurface.get(), NULL, 0); // Clear Window
 		SDL_FillRect(surfBuffer.get(), NULL, 0); // Clear Buffer Screen
 		for (int i = 0; i < 256; ++i) // Check all bytes in screenPixels array
 			for (int j = 7; j >= 0; --j) { // Check bits of the byte
@@ -160,7 +159,7 @@ struct Chip8 { // Chip 8 Processor: Originally an interpreter for the TELMAC
 	Uint32 tickTimer; // Syncs timers to 50 hz
 	Display disp;
 	Memory<u8> RAM;
-	unsigned clockCycle = 60; // Hz
+	unsigned clockCycle = 5000; // Hz
 	Uint32 cycleMax = 1000 / clockCycle;
 	bool running = true;
 
@@ -181,8 +180,9 @@ struct Chip8 { // Chip 8 Processor: Originally an interpreter for the TELMAC
 
 	void updateTimers() { // Decrements Timers at a rate of 50 hz if greater than zero
 		Uint32 currentTick = SDL_GetTicks();
-		Uint32 tickTime = tickTimer - currentTick;
-		if (tickTime < (1000 / 50)) {
+		Uint32 tickTime = currentTick - tickTimer;
+		const Uint32 timerRegRate = 1000 / 50;
+		if (tickTime > timerRegRate) {
 			tickTimer = SDL_GetTicks();
 			if (dt > 0) --dt;
 			if (st > 0) --st;
@@ -203,7 +203,7 @@ struct Chip8 { // Chip 8 Processor: Originally an interpreter for the TELMAC
 		}
 	}
 
-	bool keyIsPressed(u8 key) {
+	bool keyIsPressed(const u8 & key) {
 		if (io[key]) { return true; }
 		else { return false; }
 	}
@@ -218,6 +218,8 @@ struct Chip8 { // Chip 8 Processor: Originally an interpreter for the TELMAC
 				case SDLK_ESCAPE:
 					running = false;
 					break;
+				case SDLK_x:
+					io[0] = true;
 				case SDLK_1:
 					io[1] = true;
 					break;
@@ -227,40 +229,40 @@ struct Chip8 { // Chip 8 Processor: Originally an interpreter for the TELMAC
 				case SDLK_3:
 					io[3] = true;
 					break;
-				case SDLK_4:
+				case SDLK_q:
 					io[4] = true;
 					break;
-				case SDLK_5:
+				case SDLK_w:
 					io[5] = true;
 					break;
-				case SDLK_6:
+				case SDLK_e:
 					io[6] = true;
 					break;
-				case SDLK_7:
+				case SDLK_a:
 					io[7] = true;
 					break;
-				case SDLK_8:
+				case SDLK_s:
 					io[8] = true;
 					break;
-				case SDLK_9:
+				case SDLK_d:
 					io[9] = true;
 					break;
-				case SDLK_a:
+				case SDLK_z:
 					io[0xa] = true;
 					break;
-				case SDLK_b:
+				case SDLK_c:
 					io[0xb] = true;
 					break;
-				case SDLK_c:
+				case SDLK_4:
 					io[0xc] = true;
 					break;
-				case SDLK_d:
+				case SDLK_r:
 					io[0xd] = true;
 					break;
-				case SDLK_e:
+				case SDLK_f:
 					io[0xe] = true;
 					break;
-				case SDLK_f:
+				case SDLK_v:
 					io[0xf] = true;
 					break;
 				default:
@@ -277,13 +279,11 @@ struct Chip8 { // Chip 8 Processor: Originally an interpreter for the TELMAC
 		printf("getPressedKey()\n");
 		u8 key = 0;
 		while (!io[key]) {
-			if (key < 16) {
-				++key;
-			}
-			else {
+			if (key >= 15) {
 				key = 0;
 				checkInput();
 			}
+			key++;
 		}
 		printf("%d\n", key);
 		return key;
@@ -291,7 +291,7 @@ struct Chip8 { // Chip 8 Processor: Originally an interpreter for the TELMAC
 
 
 
-	void exe(u16 opcode) {
+	void exe(const u16 & opcode) {
 		u8 n0, n1, n2, n3;
 		n0 = (0xF000 & opcode) >> 12; // opcode broken up into nibbles 
 		n1 = (0x0F00 & opcode) >> 8;
@@ -302,20 +302,22 @@ struct Chip8 { // Chip 8 Processor: Originally an interpreter for the TELMAC
 			switch (n3) {
 			case 0x0: // CLS
 				disp.clear();
+				disp.draw();
 				break;
 			case 0xe: // RET
 				pc = stack.back();
-				stack.pop_back();
+				stack.pop_back();	
 				break;
 			}
 			break;
 		case 0x1: // JP addr
 			pc = (opcode & 0x0fff);
-			pc -= 2; // counters the inc from main
+			pc -= 2; // counters the inc from main op
 			break;
 		case 0x2: // CALL addr
 			stack.push_back(pc);
 			pc = (opcode & 0x0fff);
+			pc -= 2; // counters the inc from main op
 			break;
 		case 0x3: // SE Vx, byte
 			if (regs[n1] == (opcode & 0x00ff))
@@ -366,7 +368,7 @@ struct Chip8 { // Chip 8 Processor: Originally an interpreter for the TELMAC
 				regs[n1] = regs[n2] - regs[n1];
 				break;
 			case 0xe: // SHL Vx {, Vy}
-				(regs[n1] & 0x8000) ? regs[0xf] = 1 : regs[0xf] = 0;
+				(regs[n1] & 0x80) ? regs[0xf] = 1 : regs[0xf] = 0;
 				regs[n1] = regs[n1] << 1;
 				break;
 			}
@@ -380,6 +382,7 @@ struct Chip8 { // Chip 8 Processor: Originally an interpreter for the TELMAC
 			break;
 		case 0xb: // JP V0, addr
 			pc = regs[0x0] + (opcode & 0x0fff);
+			pc -= 2; // counters the inc from main op
 			break;
 		case 0xc: // RND Vx, byte
 			regs[n1] = (rand() % 256) & (opcode & 0x00ff);
@@ -418,10 +421,10 @@ struct Chip8 { // Chip 8 Processor: Originally an interpreter for the TELMAC
 				st = regs[n1];
 				break;
 			case 0x1e: // AND I, Vx
-				i = i & regs[n1];
+				i = i + regs[n1];
 				break;
 			case 0x29: // LD F, Vx
-				i = regs[n1];
+				i = regs[n1] * 5;
 				break;
 			case 0x33: // LD B, Vx
 				RAM.WB(i, (regs[n1] / 100) % 10);
@@ -429,12 +432,12 @@ struct Chip8 { // Chip 8 Processor: Originally an interpreter for the TELMAC
 				RAM.WB(i + 2, regs[n1] % 10);
 				break;
 			case 0x55: // LD [I], Vx
-				for (int j = 0; j < regs[n1]; ++j) {
+				for (int j = 0; j < n1; ++j) {
 					RAM.WB(i + j, regs[j]);
 				}
 				break;
 			case 0x65: // LD Vx, [I]
-				for (int j = 0; j < regs[n1]; ++j) {
+				for (int j = 0; j < n1; ++j) {
 					regs[j] = RAM.RB(i + j);
 				}
 			}
