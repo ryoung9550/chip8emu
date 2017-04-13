@@ -6,7 +6,7 @@
 #include <memory>
 #include <time.h>
 
-#define SCALE 12
+#define SCALE 11
 typedef uint8_t u8;
 typedef uint16_t u16;
 
@@ -220,6 +220,7 @@ struct Chip8 { // Chip 8 Processor: Originally an interpreter for the TELMAC
 					break;
 				case SDLK_x:
 					io[0] = true;
+					break;
 				case SDLK_1:
 					io[1] = true;
 					break;
