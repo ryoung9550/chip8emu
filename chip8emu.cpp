@@ -465,7 +465,6 @@ int main(int /*argc*/, char ** argv) {
 		unsigned memAddr = 0x200;
 		while (n != EOF) {
 			sys.RAM.WB(memAddr++, u8(n & 0xff));
-			printf("%x\n", n & 0xff);
 			n = fgetc(f);
 		}
 
