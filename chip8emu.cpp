@@ -280,7 +280,6 @@ struct Chip8 { // Chip 8 Processor: Originally an interpreter for the TELMAC
 	u8 getPressedKey() { // Returns first pressed key when one is pressed.
 		printf("getPressedKey()\n");
 		u8 key = 0;
-		checkInput();
 		while (!io[key]) { // When no key is pressed
 			if (key >= 0xf) {
 				key = 0;
@@ -400,12 +399,10 @@ struct Chip8 { // Chip 8 Processor: Originally an interpreter for the TELMAC
 		case 0xe:
 			switch (n2) {
 			case 0x9:
-				checkInput();
 				if (keyIsPressed(regs[n1]))
 					pc += 2;
 				break;
 			case 0xa:
-				checkInput();
 				if (!keyIsPressed(regs[n1]))
 					pc += 2;
 				break;
@@ -451,6 +448,7 @@ struct Chip8 { // Chip 8 Processor: Originally an interpreter for the TELMAC
 
 	void op() {
 		u16 opcode = (RAM.RB(pc) << 8) | RAM.RB(pc + 1);
+		checkInput();
 		exe(opcode);
 		pc += 2; // Each instruction is 2 bytes long
 		tick();
