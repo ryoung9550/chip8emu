@@ -83,7 +83,7 @@ public:
 
 
 		if /*constexpr*/ (xOffset == 0) { // If the sprite is alligned with memory
-			for (int i = 0; i < nBytes; ++i) {
+			for (int i = 0; i < nBytes; ++i) { // Draw sprite line by line
 				//unsigned yAdj = (y + i) % 32;
 				unsigned yAdj = (y * 8 + i * 8) % 256;
 				u8 nextByte = RAM.RB(addr + i);
@@ -93,7 +93,10 @@ public:
 			}
 		}
 		else {
+			/*
 			u8 maskT = (1u << xOffset) - 1u;
+			*/
+			u8 maskT = 0xff >> xOffset;
 			u8 maskB = ~maskT;
 			if /*constexpr*/ (x > 7 * 8)
 				for (int i = 0; i < nBytes; ++i) { // If the sprite is slightly off the screen on the x axis
@@ -209,6 +212,9 @@ struct Chip8 { // Chip 8 Processor: Originally an interpreter for the TELMAC
 	}
 
 	void checkInput() {
+		for(int i = 0; i < 0xf; i++) { // Reset IO
+			io[i] = false;
+		}
 		SDL_Event e;
 		while (SDL_PollEvent(&e)) {
 			if (e.type == SDL_QUIT)
@@ -266,11 +272,6 @@ struct Chip8 { // Chip 8 Processor: Originally an interpreter for the TELMAC
 				case SDLK_v:
 					io[0xf] = true;
 					break;
-				default:
-					for (int i = 0; i < 16; ++i) {
-						io[i] = false;
-					}
-					break;
 				}
 		}
 
@@ -279,8 +280,9 @@ struct Chip8 { // Chip 8 Processor: Originally an interpreter for the TELMAC
 	u8 getPressedKey() { // Returns first pressed key when one is pressed.
 		printf("getPressedKey()\n");
 		u8 key = 0;
-		while (!io[key]) {
-			if (key >= 15) {
+		checkInput();
+		while (!io[key]) { // When no key is pressed
+			if (key >= 0xf) {
 				key = 0;
 				checkInput();
 			}
@@ -303,7 +305,7 @@ struct Chip8 { // Chip 8 Processor: Originally an interpreter for the TELMAC
 			switch (n3) {
 			case 0x0: // CLS
 				disp.clear();
-				disp.draw();
+				//disp.draw();
 				break;
 			case 0xe: // RET
 				pc = stack.back();
@@ -389,7 +391,7 @@ struct Chip8 { // Chip 8 Processor: Originally an interpreter for the TELMAC
 			regs[n1] = (rand() % 256) & (opcode & 0x00ff);
 			break;
 		case 0xd: // DRW Vx, Vy, nibble
-			if (disp.predrawSurf(i, RAM, n3, regs[n1], regs[n2]))
+			if (!disp.predrawSurf(i, RAM, n3, regs[n1], regs[n2]))
 				regs[0xf] = 1;
 			else
 				regs[0xf] = 0;
@@ -398,10 +400,12 @@ struct Chip8 { // Chip 8 Processor: Originally an interpreter for the TELMAC
 		case 0xe:
 			switch (n2) {
 			case 0x9:
+				checkInput();
 				if (keyIsPressed(regs[n1]))
 					pc += 2;
 				break;
 			case 0xa:
+				checkInput();
 				if (!keyIsPressed(regs[n1]))
 					pc += 2;
 				break;
@@ -447,7 +451,6 @@ struct Chip8 { // Chip 8 Processor: Originally an interpreter for the TELMAC
 
 	void op() {
 		u16 opcode = (RAM.RB(pc) << 8) | RAM.RB(pc + 1);
-		checkInput();
 		exe(opcode);
 		pc += 2; // Each instruction is 2 bytes long
 		tick();
